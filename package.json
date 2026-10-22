@@ -1,0 +1,7 @@
+{
+  "name": "php2shell-checker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Einfacher Header-basierter Checker fuer die PHP2Shell-Luecken (CVE-2026-109618 / CVE-2026-109619)",
+  "type": "module"
+}

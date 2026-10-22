@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PHP2Shell Checker</title>
+<style>
+  :root {
+    --bg: #0b0d12;
+    --panel: #12151c;
+    --border: #22262f;
+    --text: #e8eaed;
+    --muted: #8b92a3;
+    --accent: #5b8cff;
+    --green: #3ddc84;
+    --red: #ff5c5c;
+    --yellow: #ffc24b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .card {
+    width: 100%;
+    max-width: 560px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px;
+  }
+  h1 {
+    font-size: 22px;
+    margin: 0 0 6px;
+  }
+  .sub {
+    color: var(--muted);
+    font-size: 14px;
+    margin: 0 0 24px;
+    line-height: 1.5;
+  }
+  form {
+    display: flex;
+    gap: 8px;
+  }
+  input[type="text"] {
+    flex: 1;
+    background: #0b0d12;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    color: var(--text);
+    font-size: 15px;
+  }
+  input[type="text"]:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  button {
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    padding: 0 20px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+  .result {
+    margin-top: 24px;
+    border-radius: 12px;
+    padding: 18px;
+    border: 1px solid var(--border);
+    display: none;
+  }
+  .result.show { display: block; }
+  .badge {
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 999px;
+    margin-bottom: 10px;
+  }
+  .badge.patched, .badge.not_detected { background: rgba(61,220,132,0.15); color: var(--green); }
+  .badge.vulnerable { background: rgba(255,92,92,0.15); color: var(--red); }
+  .badge.unknown_branch, .badge.php_version_unknown, .badge.error { background: rgba(255,194,75,0.15); color: var(--yellow); }
+  .result p { margin: 0 0 10px; line-height: 1.55; font-size: 14.5px; }
+  .meta {
+    font-size: 12.5px;
+    color: var(--muted);
+    border-top: 1px solid var(--border);
+    padding-top: 10px;
+    margin-top: 10px;
+  }
+  .meta div { margin-bottom: 3px; }
+  footer {
+    margin-top: 20px;
+    font-size: 12px;
+    color: var(--muted);
+    text-align: center;
+  }
+  footer a { color: var(--muted); }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>PHP2Shell Checker</h1>
+    <p class="sub">
+      Prüft per HTTP-Header, ob eine Domain PHP nutzt und ob die Version
+      gegen die PHP2Shell-Lücken (CVE-2026-109618 / CVE-2026-109619)
+      gepatcht ist. Reine Header-Analyse, kein aktiver Scan.
+    </p>
+
+    <form id="checkForm">
+      <input type="text" id="domainInput" placeholder="example.com" autocomplete="off" required />
+      <button type="submit" id="submitBtn">Prüfen</button>
+    </form>
+
+    <div class="result" id="result">
+      <span class="badge" id="badge"></span>
+      <p id="message"></p>
+      <div class="meta" id="meta"></div>
+    </div>
+
+    <footer>
+      Informationstool, ersetzt keine eigene Sicherheitsprüfung.
+    </footer>
+  </div>
+
+  <script>
+    const form = document.getElementById('checkForm');
+    const input = document.getElementById('domainInput');
+    const btn = document.getElementById('submitBtn');
+    const resultBox = document.getElementById('result');
+    const badge = document.getElementById('badge');
+    const message = document.getElementById('message');
+    const meta = document.getElementById('meta');
+
+    const BADGE_LABELS = {
+      patched: 'Gepatcht',
+      vulnerable: 'Verwundbar',
+      not_detected: 'Kein PHP erkannt',
+      php_version_unknown: 'Version unklar',
+      unknown_branch: 'Branch unklar',
+      error: 'Fehler',
+    };
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const domain = input.value.trim();
+      if (!domain) return;
+
+      btn.disabled = true;
+      btn.textContent = 'Prüfe…';
+      resultBox.classList.remove('show');
+
+      try {
+        const res = await fetch('/api/check?domain=' + encodeURIComponent(domain));
+        const data = await res.json();
+
+        badge.className = 'badge ' + data.status;
+        badge.textContent = BADGE_LABELS[data.status] || data.status;
+        message.textContent = data.message || 'Keine Angabe.';
+
+        let metaHtml = '';
+        if (data.domain) metaHtml += `<div>Geprüft: ${data.domain}</div>`;
+        if (data.phpVersion) metaHtml += `<div>Erkannte PHP-Version: ${data.phpVersion}</div>`;
+        if (data.checkedHeaders) {
+          metaHtml += `<div>Server-Header: ${data.checkedHeaders.server || '—'}</div>`;
+          metaHtml += `<div>X-Powered-By: ${data.checkedHeaders.poweredBy || '—'}</div>`;
+        }
+        meta.innerHTML = metaHtml;
+
+        resultBox.classList.add('show');
+      } catch (err) {
+        badge.className = 'badge error';
+        badge.textContent = 'Fehler';
+        message.textContent = 'Anfrage fehlgeschlagen. Bitte später erneut versuchen.';
+        meta.innerHTML = '';
+        resultBox.classList.add('show');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Prüfen';
+      }
+    });
+  </script>
+</body>
+</html>
